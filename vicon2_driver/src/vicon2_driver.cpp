@@ -99,14 +99,16 @@ string Enum2String(const ViconDataStreamSDK::CPP::Result::Enum i_result)
 
 // The vicon driver node has differents parameters to initialized with the vicon2_driver_params.yaml
 ViconDriverNode::ViconDriverNode(const rclcpp::NodeOptions node_options)
-: rclcpp_lifecycle::LifecycleNode("vicon2_driver_node", node_options)
+: device_control::ControlledLifecycleNode(static_cast<string>("vicon2_driver_node"))
 {
   declare_parameter<std::string>("stream_mode", "ClientPull");
   declare_parameter<std::string>("host_name", "192.168.10.1:801");
   declare_parameter<std::string>("tf_ref_frame_id", "vicon_world");
   declare_parameter<std::string>("tracked_frame_suffix", "vicon");
   declare_parameter<bool>("publish_markers", false);
+  declare_parameter<bool>("publish_subjects", false);
   declare_parameter<bool>("marker_data_enabled", false);
+  declare_parameter<bool>("broadcast_tf", false);
   declare_parameter<bool>("unlabeled_marker_data_enabled", false);
   declare_parameter<int>("lastFrameNumber", 0);
   declare_parameter<int>("frameCount", 0);
@@ -236,8 +238,147 @@ void ViconDriverNode::process_frame()
     if (publish_markers_) {
       process_markers(now_time - vicon_latency, lastFrameNumber_);
     }
+
+    if (publish_subjects_) {
+      process_subjects(now_time - vicon_latency);
+    }
     lastTime = now_time;
   }
+}
+//
+void ViconDriverNode::createSegmentThread(const std::string subject_name, const std::string segment_name)
+{
+  RCLCPP_INFO(this->get_logger(), "creating new object %s/%s ...", subject_name.c_str(), segment_name.c_str() );
+  segments_mutex_.lock();
+  SegmentPublisher & spub = segment_publishers_[subject_name + "/" + segment_name];
+
+  // we don't need the lock anymore, since rest is protected by is_ready
+  segments_mutex_.unlock();
+  spub.pub = create_publisher<geometry_msgs::msg::TransformStamped>
+    (tracked_frame_suffix_ + "/" + subject_name + "/" + segment_name, 10);
+  // In here only when client is active
+  // try to get zero pose from parameter server
+  // std::string param_suffix(subject_name + "/" + segment_name + "/zero_pose/");
+  // double qw, qx, qy, qz, x, y, z;
+  // bool have_params = true;
+  // have_params = have_params && nh_priv.getParam(param_suffix + "orientation/w", qw);
+  // have_params = have_params && nh_priv.getParam(param_suffix + "orientation/x", qx);
+  // have_params = have_params && nh_priv.getParam(param_suffix + "orientation/y", qy);
+  // have_params = have_params && nh_priv.getParam(param_suffix + "orientation/z", qz);
+  // have_params = have_params && nh_priv.getParam(param_suffix + "position/x", x);
+  // have_params = have_params && nh_priv.getParam(param_suffix + "position/y", y);
+  // have_params = have_params && nh_priv.getParam(param_suffix + "position/z", z);
+
+  // if (have_params)
+  // {
+  //   ROS_INFO("loaded zero pose for %s/%s", subject_name.c_str(), segment_name.c_str());
+  //   spub.calibration_pose.setRotation(tf::Quaternion(qx, qy, qz, qw));
+  //   spub.calibration_pose.setOrigin(tf::Vector3(x, y, z));
+  //   spub.calibration_pose = spub.calibration_pose.inverse();
+  // }
+  // else
+  // {
+  //   ROS_WARN("unable to load zero pose for %s/%s", subject_name.c_str(), segment_name.c_str());
+  spub.calibration_pose.setIdentity();
+  // }
+  spub.pub->on_activate();
+  spub.is_ready = true;
+  RCLCPP_INFO(this->get_logger(), "... done, advertised as \" %s/%s/%s\" ", 
+    tracked_frame_suffix_.c_str(), subject_name.c_str(), segment_name.c_str());
+}
+
+void ViconDriverNode::createSegment(const std::string subject_name, const std::string segment_name)
+{
+  std::thread(&ViconDriverNode::createSegmentThread, this, subject_name, segment_name);
+}
+
+//
+void ViconDriverNode::process_subjects(const rclcpp::Time & frame_time)
+{
+  std::string tracked_frame, subject_name, segment_name;
+  unsigned int n_subjects = client.GetSubjectCount().SubjectCount;
+  SegmentMap::iterator pub_it;
+  tf2::Transform transform;
+  std::vector<geometry_msgs::msg::TransformStamped, std::allocator<geometry_msgs::msg::TransformStamped> > transforms;
+  static unsigned int cnt = 0;
+
+  for (unsigned int i_subjects = 0; i_subjects < n_subjects; i_subjects++)
+  {
+
+    subject_name = client.GetSubjectName(i_subjects).SubjectName;
+    unsigned int n_segments = client.GetSegmentCount(subject_name).SegmentCount;
+
+    for (unsigned int i_segments = 0; i_segments < n_segments; i_segments++)
+    {
+      segment_name = client.GetSegmentName(subject_name, i_segments).SegmentName;
+
+      ViconDataStreamSDK::CPP::Output_GetSegmentGlobalTranslation trans = 
+        client.GetSegmentGlobalTranslation(subject_name, segment_name);
+      ViconDataStreamSDK::CPP::Output_GetSegmentGlobalRotationQuaternion quat = 
+        client.GetSegmentGlobalRotationQuaternion(subject_name, segment_name);
+
+      if (trans.Result == ViconDataStreamSDK::CPP::Result::Success && 
+          quat.Result == ViconDataStreamSDK::CPP::Result::Success)
+      {
+        if (!trans.Occluded && !quat.Occluded)
+        {
+          transform.setOrigin(tf2::Vector3(trans.Translation[0] / 1000, 
+            trans.Translation[1] / 1000, trans.Translation[2] / 1000));
+          transform.setRotation(tf2::Quaternion(quat.Rotation[0], 
+            quat.Rotation[1], quat.Rotation[2], quat.Rotation[3]));
+
+          tracked_frame = tracked_frame_suffix_ + "/" + subject_name + "/" + segment_name;
+
+          if (segments_mutex_.try_lock())
+          {
+            pub_it = segment_publishers_.find(subject_name + "/" + segment_name);
+            if (pub_it != segment_publishers_.end())
+            {
+              SegmentPublisher& seg = pub_it->second;
+
+              if (seg.is_ready)
+              {
+                transform = transform * seg.calibration_pose;
+                //
+                geometry_msgs::msg::TransformStamped tf_msg;
+                tf_msg.header.stamp = frame_time;
+                tf_msg.header.frame_id = tf_ref_frame_id_;
+                tf_msg.child_frame_id = tracked_frame;
+                tf_msg.transform.translation.x = transform.getOrigin().x();
+                tf_msg.transform.translation.y = transform.getOrigin().y();
+                tf_msg.transform.translation.z = transform.getOrigin().z();
+                tf_msg.transform.rotation.x = transform.getRotation().x();
+                tf_msg.transform.rotation.y = transform.getRotation().y();
+                tf_msg.transform.rotation.z = transform.getRotation().z();
+                tf_msg.transform.rotation.w = transform.getRotation().w();
+                transforms.push_back(tf_msg);
+
+                seg.pub->publish(tf_msg);
+              }
+              segments_mutex_.unlock();
+            }
+            else
+              createSegment(subject_name, segment_name);
+          }
+        }
+        else
+        {
+          if (cnt % 100 == 0)
+            RCLCPP_WARN(this->get_logger(), "[%s] occluded, not publishing... ", subject_name);
+        }
+      }
+      else
+      {
+        RCLCPP_WARN(this->get_logger(), "GetSegmentGlobalTranslation/Rotation failed (result = %s, %s), not publishing...",
+            Enum2String(trans.Result).c_str(), Enum2String(quat.Result).c_str());
+      }
+    }
+  }
+
+  if(broadcast_tf_)
+    tf_broadcaster_->sendTransform(transforms);
+
+  cnt++;
 }
 
 // Transform the information provided by the Vicon system into vicon_msgs and publish the information
@@ -264,6 +405,38 @@ void ViconDriverNode::process_markers(const rclcpp::Time & frame_time, unsigned 
   mocap_msgs::msg::Markers markers_msg;
   markers_msg.header.stamp = frame_time;
   markers_msg.frame_number = vicon_frame_num;
+
+  // Count the number of subjects
+  unsigned int SubjectCount = client.GetSubjectCount().SubjectCount;
+  // Get labeled markers
+  for (unsigned int SubjectIndex = 0; SubjectIndex < SubjectCount; ++SubjectIndex)
+  {
+    std::string this_subject_name = client.GetSubjectName(SubjectIndex).SubjectName;
+    // Count the number of markers
+    unsigned int num_subject_markers = client.GetMarkerCount(this_subject_name).MarkerCount;
+    n_markers_ += num_subject_markers;
+    //std::cout << "    Markers (" << MarkerCount << "):" << std::endl;
+    for (unsigned int MarkerIndex = 0; MarkerIndex < num_subject_markers; ++MarkerIndex)
+    {
+      mocap_msgs::msg::Marker this_marker;
+      this_marker.marker_name = client.GetMarkerName(this_subject_name, MarkerIndex).MarkerName;
+      this_marker.subject_name = this_subject_name;
+      this_marker.segment_name
+          = client.GetMarkerParentName(this_subject_name, this_marker.marker_name).SegmentName;
+
+      // Get the global marker translation
+      ViconDataStreamSDK::CPP::Output_GetMarkerGlobalTranslation _Output_GetMarkerGlobalTranslation =
+          client.GetMarkerGlobalTranslation(this_subject_name, this_marker.marker_name);
+
+      this_marker.translation.x = _Output_GetMarkerGlobalTranslation.Translation[0];
+      this_marker.translation.y = _Output_GetMarkerGlobalTranslation.Translation[1];
+      this_marker.translation.z = _Output_GetMarkerGlobalTranslation.Translation[2];
+      this_marker.occluded = _Output_GetMarkerGlobalTranslation.Occluded;
+
+      markers_msg.markers.push_back(this_marker);
+    }
+  }
+
   unsigned int UnlabeledMarkerCount = client.GetUnlabeledMarkerCount().MarkerCount;
 
   RCLCPP_INFO(
@@ -271,9 +444,7 @@ void ViconDriverNode::process_markers(const rclcpp::Time & frame_time, unsigned 
     "# unlabeled markers: %d", UnlabeledMarkerCount);
   n_markers_ += UnlabeledMarkerCount;
   n_unlabeled_markers_ = UnlabeledMarkerCount;
-  for (unsigned int UnlabeledMarkerIndex = 0;
-    UnlabeledMarkerIndex < UnlabeledMarkerCount;
-    ++UnlabeledMarkerIndex)
+  for (unsigned int UnlabeledMarkerIndex = 0; UnlabeledMarkerIndex < UnlabeledMarkerCount; ++UnlabeledMarkerIndex)
   {
     // Get the global marker translationSegmentPublisher
     ViconDataStreamSDK::CPP::Output_GetUnlabeledMarkerGlobalTranslation
@@ -290,7 +461,8 @@ void ViconDriverNode::process_markers(const rclcpp::Time & frame_time, unsigned 
       // this_marker.occluded = false;
       markers_msg.markers.push_back(this_marker);
 
-      marker_to_tf(this_marker, marker_cnt, frame_time);
+      if(broadcast_tf_)
+        marker_to_tf(this_marker, marker_cnt, frame_time);
       marker_cnt++;
     } else {
       RCLCPP_WARN(
@@ -398,6 +570,11 @@ ViconDriverNode::on_activate(const rclcpp_lifecycle::State &)
   RCLCPP_INFO(get_logger(), "State label [%s]", get_current_state().label().c_str());
   update_pub_->on_activate();
   marker_pub_->on_activate();
+  for(auto& subject_pub : segment_publishers_)
+  {
+    subject_pub.second.pub->on_activate();
+    subject_pub.second.is_ready = true;
+  }
   connect_vicon();
   RCLCPP_INFO(get_logger(), "Activated!\n");
 
@@ -411,6 +588,11 @@ ViconDriverNode::on_deactivate(const rclcpp_lifecycle::State &)
   RCLCPP_INFO(get_logger(), "State label [%s]", get_current_state().label().c_str());
   update_pub_->on_deactivate();
   marker_pub_->on_deactivate();
+  for(auto& subject_pub : segment_publishers_)
+  {
+    subject_pub.second.pub->on_deactivate();
+    subject_pub.second.is_ready = false;
+  }
   RCLCPP_INFO(get_logger(), "Deactivated!\n");
 
   return CallbackReturnT::SUCCESS;
@@ -472,6 +654,7 @@ void ViconDriverNode::initParameters()
   get_parameter<std::string>("tf_ref_frame_id", tf_ref_frame_id_);
   get_parameter<std::string>("tracked_frame_suffix", tracked_frame_suffix_);
   get_parameter<bool>("publish_markers", publish_markers_);
+  get_parameter<bool>("publish_subjects", publish_subjects_);
   get_parameter<bool>("marker_data_enabled", marker_data_enabled_);
   get_parameter<bool>("unlabeled_marker_data_enabled", unlabeled_marker_data_enabled_);
   get_parameter<int>("lastFrameNumber", lastFrameNumber_);
@@ -499,6 +682,9 @@ void ViconDriverNode::initParameters()
   RCLCPP_INFO(
     get_logger(),
     "Param publish_markers: %s", publish_markers_ ? "true" : "false");
+  RCLCPP_INFO(
+    get_logger(),
+    "Param publish_subjects: %s", publish_subjects_ ? "true" : "false");
   RCLCPP_INFO(
     get_logger(),
     "Param marker_data_enabled: %s", marker_data_enabled_ ? "true" : "false");

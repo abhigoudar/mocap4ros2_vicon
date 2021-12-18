@@ -20,8 +20,8 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(mocap_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
-find_package(mocap_control REQUIRED)
-find_package(mocap_control_msgs REQUIRED)
+find_package(device_control REQUIRED)
+find_package(device_control_msgs REQUIRED)
 
 find_package(VICONDATASTREAMSDK_CPP REQUIRED)
 
@@ -31,8 +31,8 @@ set(dependencies
   tf2
   tf2_ros
   mocap_msgs
-  mocap_control
-  mocap_control_msgs
+  device_control
+  device_control_msgs
 )
 
 include_directories(

@@ -24,6 +24,8 @@
 #include <memory>
 #include <chrono>
 #include <vector>
+#include <mutex>
+#include <thread>
 
 #include "rclcpp/time.hpp"
 
@@ -38,16 +40,31 @@
 #include "lifecycle_msgs/msg/transition.hpp"
 #include "lifecycle_msgs/srv/change_state.hpp"
 #include "lifecycle_msgs/srv/get_state.hpp"
+#include "geometry_msgs/msg/transform_stamped.hpp"
 
+#include "tf2/transform_datatypes.h"
 #include "tf2/buffer_core.h"
 #include "tf2_ros/transform_broadcaster.h"
 
 #include "DataStreamClient.h"
 
-#include "mocap_control/ControlledLifecycleNode.hpp"
+#include "device_control/ControlledLifecycleNode.hpp"
 
+class SegmentPublisher
+{
+public:
+  rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::TransformStamped>::SharedPtr pub;
+  bool is_ready;
+  tf2::Transform calibration_pose;
+  bool calibrated;
+  SegmentPublisher() : is_ready(false),
+    calibration_pose(tf2::Transform::getIdentity()),
+    calibrated(false) {}
+};
 
-class ViconDriverNode : public rclcpp_lifecycle::LifecycleNode, public mocap_control::ControlledLifecycleNode
+typedef std::map<std::string, SegmentPublisher> SegmentMap;
+
+class ViconDriverNode : public device_control::ControlledLifecycleNode
 {
 public:
   explicit ViconDriverNode(
@@ -56,7 +73,7 @@ public:
       std::vector<rclcpp::Parameter> {
     rclcpp::Parameter("use_sim_time", true)
   }));
-
+  ~ViconDriverNode()  override {}
   using CallbackReturnT =
     rclcpp_lifecycle::node_interfaces::LifecycleNodeInterface::CallbackReturn;
 
@@ -78,7 +95,6 @@ protected:
   // std::shared_ptr<rclcpp::SyncParametersClient> parameters_client;
   rclcpp::Time now_time;
   std::string myParam;
-  // rclcpp::Publisher<mocap4ros_msgs::msg::Markers>::SharedPtr marker_pub_;
   rclcpp_lifecycle::LifecyclePublisher<mocap_msgs::msg::Markers>::SharedPtr marker_pub_;
   std::shared_ptr<tf2_ros::TransformBroadcaster> tf_broadcaster_;
   std::string stream_mode_;
@@ -86,6 +102,8 @@ protected:
   std::string tf_ref_frame_id_;
   std::string tracked_frame_suffix_;
   bool publish_markers_;
+  bool publish_subjects_;
+  bool broadcast_tf_;
   bool marker_data_enabled_;
   bool unlabeled_marker_data_enabled_;
   int lastFrameNumber_;
@@ -96,15 +114,21 @@ protected:
   std::string qos_history_policy_;
   std::string qos_reliability_policy_;
   int qos_depth_;
+  std::mutex segments_mutex_;
+  SegmentMap segment_publishers_;
 
   void process_frame();
   void process_markers(const rclcpp::Time & frame_time, unsigned int vicon_frame_num);
+  void process_subjects(const rclcpp::Time & frame_time);
   void marker_to_tf(
     mocap_msgs::msg::Marker marker,
     int marker_num, const rclcpp::Time & frame_time);
 
-  void control_start() override;
-  void control_stop() override;
+  void control_start();
+  void control_stop();
+
+  void createSegment(const std::string subject_name, const std::string segment_name);
+  void createSegmentThread(const std::string subject_name, const std::string segment_name);
 
   std::shared_ptr<rclcpp::Client<lifecycle_msgs::srv::ChangeState>> client_change_state_;
   rclcpp_lifecycle::LifecyclePublisher<std_msgs::msg::Empty>::SharedPtr update_pub_;
@@ -121,5 +145,6 @@ std::map<std::string, rmw_qos_history_policy_t> name_to_history_policy_map = {
   {"keep_last", RMW_QOS_POLICY_HISTORY_KEEP_LAST},
   {"keep_all", RMW_QOS_POLICY_HISTORY_KEEP_ALL}
 };
+
 
 #endif  // VICON2_DRIVER__VICON2_DRIVER_HPP_
