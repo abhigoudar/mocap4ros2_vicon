@@ -14,6 +14,8 @@ endif()
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake/")
 
 find_package(ament_cmake REQUIRED)
+
+include(ConfigExtras.cmake)
 find_package(rclcpp REQUIRED)
 find_package(rclcpp_lifecycle REQUIRED)
 find_package(tf2 REQUIRED)
@@ -26,6 +28,7 @@ find_package(device_control_msgs REQUIRED)
 find_package(VICONDATASTREAMSDK_CPP REQUIRED)
 
 set(dependencies
+  Boost
   rclcpp
   rclcpp_lifecycle
   tf2
@@ -44,7 +47,7 @@ add_library(
   ${PROJECT_NAME}
 src/vicon2_driver.cpp)
 
-ament_target_dependencies(${PROJECT_NAME} ${dependencies})
+ament_target_dependencies(${PROJECT_NAME} ${dependencies} ${Boost_LIBRARIES})
 target_compile_definitions(${PROJECT_NAME}
   PRIVATE "VICON_BUILDING_LIBRARY")
 
@@ -58,7 +61,7 @@ target_link_libraries(vicon2_driver_main
 )
 
 ament_target_dependencies(vicon2_driver ${dependencies})
-target_link_libraries(vicon2_driver ${LIBVICONDATASTREAM_SDK_LIBRARY})
+target_link_libraries(vicon2_driver ${LIBVICONDATASTREAM_SDK_LIBRARY} ${Boost_LIBRARIES})
 
 install(DIRECTORY include/
   DESTINATION include/
@@ -99,4 +102,4 @@ endif()
 ament_export_include_directories(include)
 ament_export_libraries(${PROJECT_NAME})
 ament_export_dependencies(${dependencies})
-ament_package()
+ament_package(CONFIG_EXTRAS "ConfigExtras.cmake")

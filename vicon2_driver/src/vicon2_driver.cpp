@@ -215,7 +215,7 @@ void ViconDriverNode::process_frame()
   static rclcpp::Time lastTime;
   ViconDataStreamSDK::CPP::Output_GetFrameNumber OutputFrameNum = client.GetFrameNumber();
   ViconDataStreamSDK::CPP::Output_GetFrameRate OutputFrameRate = client.GetFrameRate();
-  RCLCPP_WARN(get_logger(), "Frame rate: %f", OutputFrameRate.FrameRateHz);
+  // RCLCPP_WARN(get_logger(), "Frame rate: %f", OutputFrameRate.FrameRateHz);
 
   int frameDiff = 0;
   if (lastFrameNumber_ != 0) {
@@ -249,11 +249,11 @@ void ViconDriverNode::process_frame()
 void ViconDriverNode::createSegmentThread(const std::string subject_name, const std::string segment_name)
 {
   RCLCPP_INFO(this->get_logger(), "creating new object %s/%s ...", subject_name.c_str(), segment_name.c_str() );
-  segments_mutex_.lock();
+  boost::mutex::scoped_lock lock(segments_mutex_);
   SegmentPublisher & spub = segment_publishers_[subject_name + "/" + segment_name];
 
   // we don't need the lock anymore, since rest is protected by is_ready
-  segments_mutex_.unlock();
+  lock.unlock();
   spub.pub = create_publisher<geometry_msgs::msg::TransformStamped>
     (tracked_frame_suffix_ + "/" + subject_name + "/" + segment_name, 10);
   // In here only when client is active
@@ -289,7 +289,7 @@ void ViconDriverNode::createSegmentThread(const std::string subject_name, const 
 
 void ViconDriverNode::createSegment(const std::string subject_name, const std::string segment_name)
 {
-  std::thread(&ViconDriverNode::createSegmentThread, this, subject_name, segment_name);
+  boost::thread(&ViconDriverNode::createSegmentThread, this, subject_name, segment_name);
 }
 
 //
@@ -329,7 +329,9 @@ void ViconDriverNode::process_subjects(const rclcpp::Time & frame_time)
 
           tracked_frame = tracked_frame_suffix_ + "/" + subject_name + "/" + segment_name;
 
-          if (segments_mutex_.try_lock())
+          boost::mutex::scoped_try_lock lock(segments_mutex_);
+
+          if (lock.owns_lock())
           {
             pub_it = segment_publishers_.find(subject_name + "/" + segment_name);
             if (pub_it != segment_publishers_.end())
@@ -355,16 +357,18 @@ void ViconDriverNode::process_subjects(const rclcpp::Time & frame_time)
 
                 seg.pub->publish(tf_msg);
               }
-              segments_mutex_.unlock();
             }
             else
+            {
+              lock.unlock();
               createSegment(subject_name, segment_name);
+            }
           }
         }
         else
         {
           if (cnt % 100 == 0)
-            RCLCPP_WARN(this->get_logger(), "[%s] occluded, not publishing... ", subject_name);
+            RCLCPP_WARN(this->get_logger(), "[%s] occluded, not publishing... ", subject_name.c_str());
         }
       }
       else
@@ -439,9 +443,9 @@ void ViconDriverNode::process_markers(const rclcpp::Time & frame_time, unsigned 
 
   unsigned int UnlabeledMarkerCount = client.GetUnlabeledMarkerCount().MarkerCount;
 
-  RCLCPP_INFO(
-    get_logger(),
-    "# unlabeled markers: %d", UnlabeledMarkerCount);
+  // RCLCPP_INFO(
+    // get_logger(),
+    // "# unlabeled markers: %d", UnlabeledMarkerCount);
   n_markers_ += UnlabeledMarkerCount;
   n_unlabeled_markers_ = UnlabeledMarkerCount;
   for (unsigned int UnlabeledMarkerIndex = 0; UnlabeledMarkerIndex < UnlabeledMarkerCount; ++UnlabeledMarkerIndex)

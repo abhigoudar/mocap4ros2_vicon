@@ -24,9 +24,9 @@
 #include <memory>
 #include <chrono>
 #include <vector>
-#include <mutex>
-#include <thread>
 
+#include <boost/thread.hpp>
+#include <boost/thread/mutex.hpp>
 #include "rclcpp/time.hpp"
 
 #include "mocap_msgs/msg/marker.hpp"
@@ -114,7 +114,7 @@ protected:
   std::string qos_history_policy_;
   std::string qos_reliability_policy_;
   int qos_depth_;
-  std::mutex segments_mutex_;
+  boost::mutex segments_mutex_;
   SegmentMap segment_publishers_;
 
   void process_frame();
