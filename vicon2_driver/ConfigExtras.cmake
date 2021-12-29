@@ -1,1 +1,1 @@
-find_package(Boost REQUIRED COMPONENTS filesystem system thread date_time)
+find_package(Boost REQUIRED COMPONENTS thread date_time)

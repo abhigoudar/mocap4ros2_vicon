@@ -47,7 +47,7 @@ add_library(
   ${PROJECT_NAME}
 src/vicon2_driver.cpp)
 
-ament_target_dependencies(${PROJECT_NAME} ${dependencies} ${Boost_LIBRARIES})
+ament_target_dependencies(${PROJECT_NAME} ${dependencies})
 target_compile_definitions(${PROJECT_NAME}
   PRIVATE "VICON_BUILDING_LIBRARY")
 
