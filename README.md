@@ -4,7 +4,7 @@
 
 This repository contains the drivers to run the mocap4ros2_project with vicon.
 
-**To use and compile this project is obligatory to download first the [mocap_msgs](https://github.com/MOCAP4ROS2-Project/mocap_msgs) repository in your workspace and follow the next instructions:**
+**To use and compile this project is obligatory to download [mocap_msgs](https://github.com/abhigoudar/mocap_msgs) and [device_control](https://github.com/abhigoudar/device_control) repository in your workspace and follow the next instructions:**
 
 ## Vicon DataStream SDK
 
