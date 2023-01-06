@@ -22,6 +22,7 @@ find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(mocap_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
 find_package(device_control REQUIRED)
 find_package(device_control_msgs REQUIRED)
 
@@ -36,6 +37,8 @@ set(dependencies
   mocap_msgs
   device_control
   device_control_msgs
+  geometry_msgs
+  nav_msgs
 )
 
 include_directories(

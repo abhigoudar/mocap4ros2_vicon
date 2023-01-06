@@ -33,17 +33,17 @@ def generate_launch_description():
     params_file_path = os.path.join(get_package_share_directory(
       'vicon2_driver'), 'config', 'vicon2_driver_params.yaml')
 
-    stdout_linebuf_envvar = SetEnvironmentVariable(
-        'RCUTILS_CONSOLE_STDOUT_LINE_BUFFERED', '1')
+    # stdout_linebuf_envvar = SetEnvironmentVariable(
+    #     'RCUTILS_CONSOLE_STDOUT_LINE_BUFFERED', '1')
 
     # print('')
     # print('params_file_path: ', params_file_path)
     # print('')
 
     driver_node = LifecycleNode(
-        node_name='vicon2_driver_node',
+        name='vicon2_driver_node',
         package='vicon2_driver',
-        node_executable='vicon2_driver_main',
+        executable='vicon2_driver_main',
         prefix=['stdbuf -o L'],
         output="screen",
         parameters=[params_file_path],
@@ -68,7 +68,7 @@ def generate_launch_description():
     # Create the launch description and populate
     ld = LaunchDescription()
 
-    ld.add_action(stdout_linebuf_envvar)
+    # ld.add_action(stdout_linebuf_envvar)
     ld.add_action(driver_node)
     ld.add_action(driver_configure_trans_event)
     ld.add_action(driver_activate_trans_event)

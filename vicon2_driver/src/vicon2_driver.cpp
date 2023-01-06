@@ -185,7 +185,7 @@ void ViconDriverNode::start_vicon()
       RCLCPP_WARN(get_logger(), "getFrame returned false");
       d.sleep();
     }
-    // now_time = this->now();
+    now_time = this->now();
     process_frame();
   }
 }
@@ -256,6 +256,8 @@ void ViconDriverNode::createSegmentThread(const std::string subject_name, const 
   lock.unlock();
   spub.pub = create_publisher<geometry_msgs::msg::TransformStamped>
     (tracked_frame_suffix_ + "/" + subject_name + "/" + segment_name, 10);
+  spub.odom_pub = create_publisher<nav_msgs::msg::Odometry>
+    (tracked_frame_suffix_ + "/" + subject_name + "/" + segment_name + "_odom", 10);
   // In here only when client is active
   // try to get zero pose from parameter server
   // std::string param_suffix(subject_name + "/" + segment_name + "/zero_pose/");
@@ -282,6 +284,7 @@ void ViconDriverNode::createSegmentThread(const std::string subject_name, const 
   spub.calibration_pose.setIdentity();
   // }
   spub.pub->on_activate();
+  spub.odom_pub->on_activate();
   spub.is_ready = true;
   RCLCPP_INFO(this->get_logger(), "... done, advertised as \" %s/%s/%s\" ", 
     tracked_frame_suffix_.c_str(), subject_name.c_str(), segment_name.c_str());
@@ -353,9 +356,22 @@ void ViconDriverNode::process_subjects(const rclcpp::Time & frame_time)
                 tf_msg.transform.rotation.y = transform.getRotation().y();
                 tf_msg.transform.rotation.z = transform.getRotation().z();
                 tf_msg.transform.rotation.w = transform.getRotation().w();
+                nav_msgs::msg::Odometry odom_msg;
+                odom_msg.header = tf_msg.header;
+                odom_msg.child_frame_id = tracked_frame;
+                odom_msg.pose.pose.position.x = transform.getOrigin().x();
+                odom_msg.pose.pose.position.y = transform.getOrigin().y();
+                odom_msg.pose.pose.position.z = transform.getOrigin().z();
+                odom_msg.pose.pose.orientation.x = transform.getRotation().x();
+                odom_msg.pose.pose.orientation.y = transform.getRotation().y();
+                odom_msg.pose.pose.orientation.z = transform.getRotation().z();
+                odom_msg.pose.pose.orientation.w = transform.getRotation().w();
+                // TODO: Populate twist and covariance
+
                 transforms.push_back(tf_msg);
 
                 seg.pub->publish(tf_msg);
+                seg.odom_pub->publish(odom_msg);
               }
             }
             else
@@ -577,6 +593,7 @@ ViconDriverNode::on_activate(const rclcpp_lifecycle::State &)
   for(auto& subject_pub : segment_publishers_)
   {
     subject_pub.second.pub->on_activate();
+    subject_pub.second.odom_pub->on_activate();
     subject_pub.second.is_ready = true;
   }
   connect_vicon();
@@ -595,6 +612,7 @@ ViconDriverNode::on_deactivate(const rclcpp_lifecycle::State &)
   for(auto& subject_pub : segment_publishers_)
   {
     subject_pub.second.pub->on_deactivate();
+    subject_pub.second.odom_pub->on_deactivate();
     subject_pub.second.is_ready = false;
   }
   RCLCPP_INFO(get_logger(), "Deactivated!\n");

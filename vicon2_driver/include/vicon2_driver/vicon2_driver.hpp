@@ -41,6 +41,7 @@
 #include "lifecycle_msgs/srv/change_state.hpp"
 #include "lifecycle_msgs/srv/get_state.hpp"
 #include "geometry_msgs/msg/transform_stamped.hpp"
+#include "nav_msgs/msg/odometry.hpp"
 
 #include "tf2/transform_datatypes.h"
 #include "tf2/buffer_core.h"
@@ -54,6 +55,7 @@ class SegmentPublisher
 {
 public:
   rclcpp_lifecycle::LifecyclePublisher<geometry_msgs::msg::TransformStamped>::SharedPtr pub;
+  rclcpp_lifecycle::LifecyclePublisher<nav_msgs::msg::Odometry>::SharedPtr odom_pub;
   bool is_ready;
   tf2::Transform calibration_pose;
   bool calibrated;
