@@ -254,10 +254,13 @@ void ViconDriverNode::createSegmentThread(const std::string subject_name, const 
 
   // we don't need the lock anymore, since rest is protected by is_ready
   lock.unlock();
+  auto qos = rclcpp::QoS(rclcpp::KeepLast(30));
+  qos.reliable();
+  qos.transient_local();
   spub.pub = create_publisher<geometry_msgs::msg::TransformStamped>
-    (tracked_frame_suffix_ + "/" + subject_name + "/" + segment_name, 10);
+    (tracked_frame_suffix_ + "/" + subject_name + "/" + segment_name, qos);
   spub.odom_pub = create_publisher<nav_msgs::msg::Odometry>
-    (tracked_frame_suffix_ + "/" + subject_name + "/" + segment_name + "_odom", 10);
+    (tracked_frame_suffix_ + "/" + subject_name + "/" + segment_name + "_odom", qos);
   // In here only when client is active
   // try to get zero pose from parameter server
   // std::string param_suffix(subject_name + "/" + segment_name + "/zero_pose/");
@@ -348,7 +351,7 @@ void ViconDriverNode::process_subjects(const rclcpp::Time & frame_time)
                 geometry_msgs::msg::TransformStamped tf_msg;
                 tf_msg.header.stamp = frame_time;
                 tf_msg.header.frame_id = tf_ref_frame_id_;
-                tf_msg.child_frame_id = tracked_frame;
+                tf_msg.child_frame_id = subject_name;
                 tf_msg.transform.translation.x = transform.getOrigin().x();
                 tf_msg.transform.translation.y = transform.getOrigin().y();
                 tf_msg.transform.translation.z = transform.getOrigin().z();
@@ -358,7 +361,7 @@ void ViconDriverNode::process_subjects(const rclcpp::Time & frame_time)
                 tf_msg.transform.rotation.w = transform.getRotation().w();
                 nav_msgs::msg::Odometry odom_msg;
                 odom_msg.header = tf_msg.header;
-                odom_msg.child_frame_id = tracked_frame;
+                odom_msg.child_frame_id = subject_name;
                 odom_msg.pose.pose.position.x = transform.getOrigin().x();
                 odom_msg.pose.pose.position.y = transform.getOrigin().y();
                 odom_msg.pose.pose.position.z = transform.getOrigin().z();

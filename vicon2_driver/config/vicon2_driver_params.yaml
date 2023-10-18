@@ -1,6 +1,7 @@
 vicon2_driver_node:
   ros__parameters:
     stream_mode: "ClientPull"
+    # host_name: "192.168.10.2:801"
     host_name: "192.168.2.120:801"
     tf_ref_frame_id: "world"
     tracked_frame_suffix: "vicon"
