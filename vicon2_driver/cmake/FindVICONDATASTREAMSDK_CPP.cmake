@@ -16,16 +16,17 @@
 #
 # Author: Francisco Martín <fmrico@gmail.com>
 
-include(GNUInstallDirs)
+# include(GNUInstallDirs)
 
 find_library(
     LIBVICONDATASTREAM_SDK_LIBRARY
-    NAMES ViconDataStreamSDK_CPP)
+    NAMES ViconDataStreamSDK_CPP
+    PATHS "${PROJECT_SOURCE_DIR}/../ViconDataStreamSDK")
 
 find_path(
   LIBVICONDATASTREAM_SDK_INCLUDE_DIR
   NAMES DataStreamClient.h
-  PATHS /usr/local/include/ViconDataStreamSDK)
+  PATHS "${PROJECT_SOURCE_DIR}/../ViconDataStreamSDK")
 
 include(FindPackageHandleStandardArgs)
 

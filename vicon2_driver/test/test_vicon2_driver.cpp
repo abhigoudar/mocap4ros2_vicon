@@ -80,7 +80,7 @@ TEST(UtilsTest, test_vicon2_params)
   auto vicon2_node = std::make_shared<TestViconDriver>();
   auto test_node = rclcpp::Node::make_shared("vicon2_test_node");
 
-  rclcpp::executors::MultiThreadedExecutor exe(rclcpp::executor::ExecutorArgs(), 4);
+  rclcpp::executors::MultiThreadedExecutor exe(rclcpp::ExecutorOptions(), 4);
   exe.add_node(vicon2_node->get_node_base_interface());
   exe.add_node(test_node->get_node_base_interface());
 

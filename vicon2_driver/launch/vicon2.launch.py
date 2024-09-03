@@ -41,6 +41,7 @@ def generate_launch_description():
     # print('')
 
     driver_node = LifecycleNode(
+        namespace='',
         name='vicon2_driver_node',
         package='vicon2_driver',
         executable='vicon2_driver_main',
