@@ -254,9 +254,10 @@ void ViconDriverNode::createSegmentThread(const std::string subject_name, const 
 
   // we don't need the lock anymore, since rest is protected by is_ready
   lock.unlock();
-  auto qos = rclcpp::QoS(rclcpp::KeepLast(30));
-  qos.reliable();
-  qos.transient_local();
+  // auto qos = rclcpp::QoS(rclcpp::KeepLast(30));
+  // qos.reliable();
+  // qos.transient_local();
+  auto qos = rclcpp::SensorDataQoS();
   spub.pub = create_publisher<geometry_msgs::msg::TransformStamped>
     (tracked_frame_suffix_ + "/" + subject_name + "/" + segment_name, qos);
   spub.odom_pub = create_publisher<nav_msgs::msg::Odometry>
