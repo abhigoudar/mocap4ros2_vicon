@@ -360,6 +360,7 @@ void ViconDriverNode::process_subjects(const rclcpp::Time & frame_time)
                 tf_msg.transform.rotation.y = transform.getRotation().y();
                 tf_msg.transform.rotation.z = transform.getRotation().z();
                 tf_msg.transform.rotation.w = transform.getRotation().w();
+                //
                 nav_msgs::msg::Odometry odom_msg;
                 odom_msg.header = tf_msg.header;
                 odom_msg.child_frame_id = subject_name;
@@ -370,8 +371,14 @@ void ViconDriverNode::process_subjects(const rclcpp::Time & frame_time)
                 odom_msg.pose.pose.orientation.y = transform.getRotation().y();
                 odom_msg.pose.pose.orientation.z = transform.getRotation().z();
                 odom_msg.pose.pose.orientation.w = transform.getRotation().w();
-                // TODO: Populate twist and covariance
-
+                // TODO: Parameterize covariance
+                for(int i=0; i < 36; i++){
+                  if(i%7 == 0)
+                    odom_msg.pose.covariance[i] = 0.0001;
+                  else
+                    odom_msg.pose.covariance[i] = 0.0;
+                }
+                //
                 transforms.push_back(tf_msg);
 
                 seg.pub->publish(tf_msg);
